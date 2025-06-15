@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fitness Tracker</title>
+    <link rel="icon" type="image/png" href="https://cdn-icons-png.freepik.com/256/4357/4357645.png">
+    <link rel="shortcut icon" type="image/png" href="https://cdn-icons-png.freepik.com/256/4357/4357645.png">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            background-color: #f0f0f0;
+        }
+
+        .container {
+            width: 100%;
+            min-height: 100vh;
+            padding: 5% 5% 10% 5%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .input-section {
+            background: white;
+            padding: 5%;
+            border-radius: 15px;
+            margin-bottom: 5%;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 3%;
+            margin: 2% 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        button {
+            width: 100%;
+            padding: 4%;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin: 2% 0;
+            cursor: pointer;
+            transition: opacity 0.3s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        #map-container {
+            position: relative;
+            width: 100%;
+            height: 40vh;
+            margin: 5% 0;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            border-radius: 15px;
+            z-index: 1;
+        }
+
+        #recenterBtn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+            width: 40px;
+            height: 40px;
+            padding: 8px;
+            border-radius: 50%;
+            background: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        #nightModeBtn {
+            position: absolute;
+            bottom: 20px;
+            right: 70px;
+            z-index: 1000;
+            width: 40px;
+            height: 40px;
+            padding: 8px;
+            border-radius: 50%;
+            background: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        .stats {
+            background: white;
+            padding: 5%;
+            border-radius: 15px;
+            margin-bottom: 5%;
+        }
+
+        .stat-item {
+            margin: 3% 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .stat-value {
+            font-weight: bold;
+        }
+
+        #chart {
+            width: 100%;
+            height: 30vh;
+            margin: 5% 0;
+        }
+
+        .workout-history {
+            background: white;
+            padding: 5%;
+            border-radius: 15px;
+            margin-top: 5%;
+            margin-bottom: 10vh;
+        }
+
+        .workout-table-container {
+            overflow-x: auto;
+            margin-top: 15px;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .workout-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .workout-table th,
+        .workout-table td {
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+
+        .workout-table th {
+            background-color: #f4f4f4;
+        }
+
+        .toast-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #4CAF50;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+            z-index: 1000;
+        }
+
+        .toast-notification.show {
+            opacity: 1;
+        }
+
+        .toast-notification.gps-warning {
+            background: #ff9800;
+        }
+
+        .toast-notification.gps-error {
+            background: #f44336;
+        }
+
+        .accuracy-indicator {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+        }
+
+        .accuracy-good {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .accuracy-medium {
+            background-color: #ff9800;
+            color: white;
+        }
+
+        .accuracy-poor {
+            background-color: #f44336;
+            color: white;
+        }
+
+        .night-mode {
+            filter: invert(100%) hue-rotate(180deg);
+        }
+
+        @media (max-width: 768px) {
+            .workout-table {
+                font-size: 14px;
+            }
+            
+            .stat-item {
+                font-size: 14px;
+            }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="input-section">
+            <input step="any" type="number" id="weight" placeholder="Peso (kg)">
+            <select id="activity">
+                <option value="walking">Camminata</option>
+                <option value="running">Corsa</option>
+            </select>
+            <button id="startBtn">Inizia</button>
+            <button id="stopBtn" style="display: none; background: #f44336;">Stop</button>
+        </div>
+
+        <div class="stats">
+            <div class="stat-item">
+                <span>Tempo:</span>
+                <span id="time" class="stat-value">00:00:00</span>
+            </div>
+            <div class="stat-item">
+                <span>Velocità:</span>
+                <span id="speed" class="stat-value">0</span> km/h
+            </div>
+            <div class="stat-item">
+                <span>Passo:</span>
+                <span id="pace" class="stat-value">0:00</span> min/km
+            </div>
+            <div class="stat-item">
+                <span>Distanza:</span>
+                <span id="distance" class="stat-value">0</span> km
+            </div>
+            <div class="stat-item">
+                <span>Calorie:</span>
+                <span id="calories" class="stat-value">0</span> kcal
+            </div>
+            <div class="stat-item">
+                <span>Precisione GPS:</span>
+                <span id="accuracy" class="stat-value accuracy-indicator">In attesa...</span>
+            </div>
+        </div>
+
+        <div id="map-container">
+            <div id="map"></div>
+            <button id="recenterBtn" title="Centra sulla posizione">
+                <span class="material-icons">🎯</span>
+            </button>
+            <button id="nightModeBtn" title="Modalità notte">
+                <span class="material-icons">🌙</span>
+            </button>
+        </div>
+
+        <canvas id="chart"></canvas>
+        
+        <div class="workout-history">
+            <h3>Storico Allenamenti</h3>
+            <div id="workoutResults"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        let map, marker, watchId, startTime;
+        let path = [];
+        let timeData = [];
+        let speedData = [];
+        let isTracking = false;
+        let isPaused = false;
+        let polyline;
+        let timerInterval;
+        let autoSaveInterval;
+        let isDarkMode = false;
+        let lightTileLayer, darkTileLayer;
+
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwEPTys7pU5d7Zjl_68sKHNtjSRgEAxf8YvBiXJ_TRuVfR3-9w0hclp5wtsf7SvrQIQ/exec';
+
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast-notification ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.classList.add('show'), 10);
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => document.body.removeChild(toast), 300);
+            }, 2000);
+        }
+
+        function showLoading() {
+            const loadingDiv = document.createElement('div');
+            loadingDiv.id = 'loadingSpinner';
+            loadingDiv.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                z-index: 2000;
+            `;
+            loadingDiv.innerHTML = `
+                <div style="
+                    border: 4px solid #f3f3f3;
+                    border-top: 4px solid #4CAF50;
+                    border-radius: 50%;
+                    width: 40px;
+                    height: 40px;
+                    animation: spin 1s linear infinite;
+                "></div>
+            `;
+            document.body.appendChild(loadingDiv);
+        }
+
+        function hideLoading() {
+            const loadingDiv = document.getElementById('loadingSpinner');
+            if (loadingDiv) loadingDiv.remove();
+        }
+
+        function startTimer() {
+            const startTime = Date.now() - (path.length ? (new Date() - startTime) : 0);
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (!isPaused) {
+                    const elapsedTime = Date.now() - startTime;
+                    const seconds = Math.floor(elapsedTime / 1000);
+                    const hours = Math.floor(seconds / 3600);
+                    const minutes = Math.floor((seconds % 3600) / 60);
+                    const remainingSeconds = seconds % 60;
+                    document.getElementById('time').textContent = 
+                        `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+                }
+            }, 100);
+        }
+
+        function stopTimer() {
+            clearInterval(timerInterval);
+        }
+
+        function updateGPSStatus(accuracy) {
+            const accuracyElement = document.getElementById('accuracy');
+            if (accuracy <= 10) {
+                accuracyElement.textContent = `Ottima (±${Math.round(accuracy)}m)`;
+                accuracyElement.className = 'stat-value accuracy-indicator accuracy-good';
+            } else if (accuracy <= 20) {
+                accuracyElement.textContent = `Buona (±${Math.round(accuracy)}m)`;
+                accuracyElement.className = 'stat-value accuracy-indicator accuracy-good';
+            } else if (accuracy <= 50) {
+                accuracyElement.textContent = `Discreta (±${Math.round(accuracy)}m)`;
+                accuracyElement.className = 'stat-value accuracy-indicator accuracy-medium';
+            } else {
+                accuracyElement.textContent = `Scarsa (±${Math.round(accuracy)}m)`;
+                accuracyElement.className = 'stat-value accuracy-indicator accuracy-poor';
+            }
+        }
+
+        function calculatePace(speed) {
+            if (speed <= 0) return "0:00";
+            const minutesPerKm = 60 / speed;
+            const minutes = Math.floor(minutesPerKm);
+            const seconds = Math.round((minutesPerKm - minutes) * 60);
+            return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function vibrateOnMilestone() {
+            const distance = parseFloat(document.getElementById('distance').textContent);
+            if (distance > 0 && distance % 1 < 0.01) {
+                if ('vibrate' in navigator) {
+                    navigator.vibrate([200, 100, 200]);
+                    showToast(`Complimenti! Hai percorso ${Math.floor(distance)} km`);
+                }
+            }
+        }
+
+        function toggleNightMode() {
+            isDarkMode = !isDarkMode;
+            if (isDarkMode) {
+                map.removeLayer(lightTileLayer);
+                darkTileLayer.addTo(map);
+                document.getElementById('map').classList.add('night-mode');
+            } else {
+                map.removeLayer(darkTileLayer);
+                lightTileLayer.addTo(map);
+                document.getElementById('map').classList.remove('night-mode');
+            }
+        }
+        function initMap() {
+            showLoading();
+
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        const initialPos = [position.coords.latitude, position.coords.longitude];
+                        map = L.map('map').setView(initialPos, 16);
+                        
+                        lightTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            attribution: '© OpenStreetMap contributors',
+                            maxZoom: 19
+                        });
+
+                        darkTileLayer = L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
+                            attribution: '© OpenStreetMap contributors',
+                            maxZoom: 19
+                        });
+
+                        lightTileLayer.addTo(map);
+
+                        polyline = L.polyline([], {
+                            color: '#4CAF50',
+                            weight: 3
+                        }).addTo(map);
+
+                        L.marker(initialPos)
+                            .addTo(map)
+                            .bindPopup('La tua posizione attuale')
+                            .openPopup();
+
+                        updateGPSStatus(position.coords.accuracy);
+                        hideLoading();
+                        showToast('Posizione trovata con successo');
+                    },
+                    function(error) {
+                        const romaPos = [41.9028, 12.4964];
+                        map = L.map('map').setView(romaPos, 16);
+                        
+                        lightTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            attribution: '© OpenStreetMap contributors',
+                            maxZoom: 19
+                        }).addTo(map);
+
+                        darkTileLayer = L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
+                            attribution: '© OpenStreetMap contributors',
+                            maxZoom: 19
+                        });
+
+                        polyline = L.polyline([], {
+                            color: '#4CAF50',
+                            weight: 3
+                        }).addTo(map);
+
+                        hideLoading();
+                        showToast('Impossibile trovare la tua posizione. Mappa centrata su Roma', 'gps-error');
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 5000,
+                        maximumAge: 0
+                    }
+                );
+            } else {
+                showToast('Geolocalizzazione non supportata dal browser', 'gps-error');
+            }
+        }
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                     Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        function getMET(activity, speed) {
+            if (activity === 'walking') {
+                if (speed < 3.2) return 2.0;
+                if (speed < 4.0) return 2.5;
+                if (speed < 4.8) return 3.0;
+                if (speed < 5.6) return 3.5;
+                if (speed < 6.4) return 4.3;
+                if (speed < 7.2) return 5.0;
+                return 6.0;
+            } else {
+                if (speed < 6.4) return 6.0;
+                if (speed < 8.0) return 8.3;
+                if (speed < 9.7) return 9.8;
+                if (speed < 11.3) return 11.0;
+                if (speed < 12.9) return 11.8;
+                if (speed < 14.5) return 12.8;
+                return 14.5;
+            }
+        }
+
+        function calculateCalories(weight, met, duration) {
+            return (met * 3.5 * weight * duration) / (200 * 60);
+        }
+
+        function calculateTotalDistance() {
+            let total = 0;
+            for (let i = 1; i < path.length; i++) {
+                total += calculateDistance(
+                    path[i-1].lat, path[i-1].lng,
+                    path[i].lat, path[i].lng
+                );
+            }
+            return total;
+        }
+
+        function updateStats() {
+            if (!isPaused && path.length > 1) {
+                const currentTime = new Date();
+                const duration = (currentTime - startTime) / 1000;
+                
+                const lastPos = path[path.length - 2];
+                const newPos = path[path.length - 1];
+                const distance = calculateDistance(lastPos.lat, lastPos.lng, newPos.lat, newPos.lng);
+                const speed = (distance / (duration / 3600));
+                const met = getMET(document.getElementById('activity').value, speed);
+                const calories = calculateCalories(
+                    parseFloat(document.getElementById('weight').value),
+                    met,
+                    duration
+                );
+
+                document.getElementById('speed').textContent = speed.toFixed(1);
+                document.getElementById('pace').textContent = calculatePace(speed);
+                document.getElementById('calories').textContent = calories.toFixed(0);
+                const totalDistance = calculateTotalDistance().toFixed(2);
+                document.getElementById('distance').textContent = totalDistance;
+
+                timeData.push(duration / 60);
+                speedData.push(speed);
+                updateChart();
+                vibrateOnMilestone();
+            }
+        }
+        let speedChart = new Chart(document.getElementById('chart'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Velocità (km/h)',
+                    data: [],
+                    borderColor: '#4CAF50',
+                    tension: 0.1,
+                    fill: false
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+
+        function updateChart() {
+            speedChart.data.labels = timeData;
+            speedChart.data.datasets[0].data = speedData;
+            speedChart.update();
+        }
+
+        function createWorkoutStats(workouts) {
+            const statsContainer = document.createElement('div');
+            statsContainer.className = 'workout-stats';
+            statsContainer.innerHTML = `
+                <div class="stats-charts">
+                    <div class="chart-container">
+                        <canvas id="caloriesChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="distanceChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="durationChart"></canvas>
+                    </div>
+                </div>
+            `;
+
+            const dates = workouts.map(w => new Date(w.date).toLocaleDateString());
+            const calories = workouts.map(w => w.calories);
+            const distances = workouts.map(w => w.distance);
+            const durations = workouts.map(w => {
+                const [hours, minutes, seconds] = w.duration.split(':').map(Number);
+                return hours * 60 + minutes + seconds / 60;
+            });
+
+            new Chart(statsContainer.querySelector('#caloriesChart'), {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Calorie bruciate',
+                        data: calories,
+                        borderColor: '#F44336',
+                        tension: 0.4,
+                        fill: true,
+                        backgroundColor: 'rgba(244, 67, 54, 0.1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Progressione Calorie'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Calorie (kcal)'
+                            }
+                        }
+                    }
+                }
+            });
+
+            new Chart(statsContainer.querySelector('#distanceChart'), {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Distanza percorsa',
+                        data: distances,
+                        borderColor: '#4CAF50',
+                        tension: 0.4,
+                        fill: true,
+                        backgroundColor: 'rgba(76, 175, 80, 0.1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Progressione Distanza'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Distanza (km)'
+                            }
+                        }
+                    }
+                }
+            });
+
+            new Chart(statsContainer.querySelector('#durationChart'), {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Durata allenamento',
+                        data: durations,
+                        borderColor: '#2196F3',
+                        tension: 0.4,
+                        fill: true,
+                        backgroundColor: 'rgba(33, 150, 243, 0.1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Progressione Durata'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Durata (minuti)'
+                            }
+                        }
+                    }
+                }
+            });
+
+            return statsContainer;
+        }
+
+        function startAutoSave() {
+            clearInterval(autoSaveInterval);
+            autoSaveInterval = setInterval(() => {
+                if (path.length > 0) {
+                    const workoutData = {
+                        id: Date.now(),
+                        date: new Date().toISOString(),
+                        type: document.getElementById('activity').value,
+                        weight: parseFloat(document.getElementById('weight').value),
+                        duration: document.getElementById('time').textContent,
+                        distance: parseFloat(document.getElementById('distance').textContent),
+                        avgSpeed: parseFloat(document.getElementById('speed').textContent),
+                        calories: parseFloat(document.getElementById('calories').textContent),
+                        path: JSON.stringify(path)
+                    };
+                    localStorage.setItem('workoutBackup', JSON.stringify(workoutData));
+                }
+            }, 30000);
+        }
+        function loadWorkouts() {
+            showLoading();
+            fetch(SCRIPT_URL, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                const workoutResults = document.getElementById('workoutResults');
+                workoutResults.innerHTML = '';
+
+                if (data.workouts && data.workouts.length > 0) {
+                    const tableContainer = document.createElement('div');
+                    tableContainer.className = 'workout-table-container';
+                    
+                    const table = document.createElement('table');
+                    table.className = 'workout-table';
+
+                    const thead = document.createElement('thead');
+                    thead.innerHTML = `
+                        <tr>
+                            <th>Data</th>
+                            <th>Tipo</th>
+                            <th>Dist.(km)</th>
+                            <th>Durata</th>
+                            <th>Kcal</th>
+                            <th>Azioni</th>
+                        </tr>
+                    `;
+                    table.appendChild(thead);
+
+                    const tbody = document.createElement('tbody');
+                    data.workouts.forEach(workout => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${new Date(workout.date).toLocaleDateString()}</td>
+                            <td>${workout.type === 'walking' ? 'Camminata' : 'Corsa'}</td>
+                            <td>${workout.distance}</td>
+                            <td>${workout.duration}</td>
+                            <td>${workout.calories}</td>
+                            <td>
+                                <button class="action-button delete" onclick="deleteWorkout('${workout.id}')">
+                                    <span class="material-icons">delete</span>
+                                </button>
+                            </td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                    table.appendChild(tbody);
+
+                    tableContainer.appendChild(table);
+                    workoutResults.appendChild(tableContainer);
+
+                    const statsContainer = createWorkoutStats(data.workouts);
+                    workoutResults.appendChild(statsContainer);
+                } else {
+                    workoutResults.innerHTML = '<p style="text-align: center; color: #666;">Nessun allenamento registrato</p>';
+                }
+                hideLoading();
+            })
+            .catch(error => {
+                console.error('Error loading workouts:', error);
+                document.getElementById('workoutResults').innerHTML = 
+                    '<p style="color: red; text-align: center;">Errore nel caricamento degli allenamenti</p>';
+                hideLoading();
+            });
+        }
+
+        function deleteWorkout(workoutId) {
+            if (confirm('Sei sicuro di voler eliminare questo allenamento?')) {
+                showLoading();
+                fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        action: 'delete',
+                        id: workoutId
+                    })
+                })
+                .then(() => {
+                    showToast('Allenamento eliminato con successo');
+                    loadWorkouts();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showToast('Errore nell\'eliminazione dell\'allenamento', 'error');
+                })
+                .finally(() => {
+                    hideLoading();
+                });
+            }
+        }
+
+        function saveWorkout() {
+            const workoutData = {
+                id: Date.now(),
+                date: new Date().toISOString(),
+                type: document.getElementById('activity').value,
+                weight: parseFloat(document.getElementById('weight').value),
+                duration: document.getElementById('time').textContent,
+                distance: parseFloat(document.getElementById('distance').textContent),
+                avgSpeed: parseFloat(document.getElementById('speed').textContent),
+                calories: parseFloat(document.getElementById('calories').textContent),
+                path: JSON.stringify(path)
+            };
+
+            fetch(SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    action: 'saveWorkout',
+                    workout: workoutData
+                })
+            })
+            .then(() => {
+                showToast('Allenamento salvato con successo!');
+                localStorage.removeItem('workoutBackup');
+                loadWorkouts();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Errore nel salvataggio dell\'allenamento', 'error');
+            });
+        }
+
+        document.getElementById('startBtn').addEventListener('click', () => {
+            if (!document.getElementById('weight').value) {
+                showToast('Inserisci il tuo peso', 'error');
+                return;
+            }
+
+            isTracking = true;
+            isPaused = false;
+            startTime = new Date();
+            startTimer();
+            startAutoSave();
+            document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('stopBtn').style.display = 'block';
+
+            watchId = navigator.geolocation.watchPosition(
+                (position) => {
+                    if (position.coords.accuracy <= 20) {
+                        const pos = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude,
+                            accuracy: position.coords.accuracy,
+                            timestamp: position.timestamp
+                        };
+
+                        updateGPSStatus(position.coords.accuracy);
+
+                        if (path.length === 0) {
+                            map.setView([pos.lat, pos.lng], 16);
+                            marker = L.marker([pos.lat, pos.lng]).addTo(map);
+                        }
+
+                        const isValidPoint = path.length === 0 || (
+                            calculateDistance(
+                                path[path.length-1].lat, 
+                                path[path.length-1].lng,
+                                pos.lat, 
+                                pos.lng
+                            ) * 1000 >= 1 &&
+                            (!path[path.length-1].timestamp || 
+                             pos.timestamp - path[path.length-1].timestamp <= 5000)
+                        );
+
+                        if (isValidPoint) {
+                            path.push(pos);
+                            polyline.setLatLngs(path.map(p => [p.lat, p.lng]));
+                            marker.setLatLng([pos.lat, pos.lng]);
+                            map.panTo([pos.lat, pos.lng]);
+                            updateStats();
+                        }
+                    } else {
+                        updateGPSStatus(position.coords.accuracy);
+                        isPaused = true;
+                        showToast('Precisione GPS insufficiente', 'gps-warning');
+                    }
+                },
+                (error) => {
+                    console.error(error);
+                    showToast('Errore GPS: ' + error.message, 'gps-error');
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 1000,
+                    maximumAge: 0
+                }
+            );
+        });
+
+        document.getElementById('stopBtn').addEventListener('click', () => {
+            isTracking = false;
+            stopTimer();
+            clearInterval(autoSaveInterval);
+            navigator.geolocation.clearWatch(watchId);
+            document.getElementById('startBtn').style.display = 'block';
+            document.getElementById('stopBtn').style.display = 'none';
+            
+            if (path.length > 0) {
+                saveWorkout();
+            }
+        });
+
+        document.getElementById('recenterBtn').addEventListener('click', () => {
+            if (path.length > 0) {
+                const lastPos = path[path.length - 1];
+                map.setView([lastPos.lat, lastPos.lng], 16);
+            }
+        });
+
+        document.getElementById('nightModeBtn').addEventListener('click', toggleNightMode);
+
+        window.onload = () => {
+            setTimeout(() => {
+                initMap();
+                loadWorkouts();
+
+                const backup = localStorage.getItem('workoutBackup');
+                if (backup) {
+                    if (confirm('È stato trovato un allenamento non salvato. Vuoi recuperarlo?')) {
+                        const workoutData = JSON.parse(backup);
+                        path = JSON.parse(workoutData.path);
+                        if (path.length > 0) {
+                            polyline.setLatLngs(path.map(p => [p.lat, p.lng]));
+                            map.fitBounds(polyline.getBounds());
+                        }
+                    }
+                    localStorage.removeItem('workoutBackup');
+                }
+            }, 1000);
+        };
+    </script>
+</body>
+</html>
